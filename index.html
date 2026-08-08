@@ -1,0 +1,488 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>BRINDIESTYLE - Sistema de Gestión</title>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+    body { background: #0f0f13; color: #e8e8e8; min-height: 100vh; }
+    .login-screen { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; gap: 20px; }
+    .login-screen h1 { font-size: 2.2rem; color: #fff; }
+    .btn { background: #4f46e5; color: white; border: none; padding: 12px 28px; border-radius: 10px; font-size: 1rem; cursor: pointer; font-weight: 600; }
+    .btn:hover { background: #4338ca; }
+    .btn-green { background: #059669; }
+    .btn-green:hover { background: #047857; }
+    .btn-outline { background: transparent; border: 1px solid #555; color: #ccc; }
+    .app { display: none; }
+    .sidebar { width: 240px; background: #16161d; height: 100vh; position: fixed; padding: 20px 0; border-right: 1px solid #2a2a35; }
+    .sidebar h2 { padding: 0 20px 20px; font-size: 1.3rem; color: #a78bfa; }
+    .sidebar button { display: block; width: 100%; text-align: left; background: none; border: none; color: #aaa; padding: 14px 20px; cursor: pointer; font-size: 0.95rem; }
+    .sidebar button:hover, .sidebar button.active { background: #1e1e2a; color: #fff; }
+    .main { margin-left: 240px; padding: 30px; }
+    .card { background: #1a1a24; border-radius: 12px; padding: 20px; margin-bottom: 20px; border: 1px solid #2a2a35; }
+    h1, h2, h3 { color: #fff; margin-bottom: 15px; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+    th, td { padding: 10px 12px; text-align: left; border-bottom: 1px solid #2a2a35; }
+    th { color: #a78bfa; font-weight: 600; }
+    input, select, textarea { background: #12121a; border: 1px solid #333; color: #eee; padding: 10px 12px; border-radius: 8px; width: 100%; margin-bottom: 12px; }
+    label { display: block; margin-bottom: 4px; color: #aaa; font-size: 0.85rem; }
+    .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
+    .metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 15px; margin-bottom: 25px; }
+    .metric { background: #1a1a24; border-radius: 12px; padding: 18px; border: 1px solid #2a2a35; }
+    .metric .label { color: #888; font-size: 0.85rem; }
+    .metric .value { font-size: 1.5rem; font-weight: 700; margin-top: 5px; color: #fff; }
+    .hidden { display: none; }
+    .success { background: #065f46; color: #a7f3d0; padding: 12px; border-radius: 8px; margin-bottom: 15px; }
+    .error { background: #7f1d1d; color: #fecaca; padding: 12px; border-radius: 8px; margin-bottom: 15px; }
+    .user-info { padding: 15px 20px; border-top: 1px solid #2a2a35; margin-top: 20px; font-size: 0.85rem; color: #888; }
+  </style>
+</head>
+<body>
+
+<div id="loginScreen" class="login-screen">
+  <h1>👕 BRINDIESTYLE</h1>
+  <p style="color:#888">Sistema de Inventario de Blancos + Ventas</p>
+  <button class="btn" onclick="loginWithGoogle()">Iniciar sesión con Google</button>
+  <p id="loginError" class="error hidden"></p>
+</div>
+
+<div id="app" class="app">
+  <div class="sidebar">
+    <h2>BRINDIESTYLE</h2>
+    <button class="active" onclick="showPage('dashboard')">📊 Dashboard</button>
+    <button onclick="showPage('blancos')">👕 Inventario Blancos</button>
+    <button onclick="showPage('ventas')">🧾 Nueva Venta</button>
+    <button onclick="showPage('flujo')">💵 Flujo de Caja</button>
+    <button onclick="showPage('rentabilidad')">📈 Rentabilidad</button>
+    <button onclick="showPage('shopify')">🔄 Shopify Sync</button>
+    <button onclick="showPage('config')">⚙️ Configuración</button>
+    <div class="user-info">
+      <div id="userEmail"></div>
+      <button class="btn-outline" style="margin-top:10px;width:100%" onclick="logout()">Cerrar sesión</button>
+    </div>
+  </div>
+
+  <div class="main">
+    <div id="page-dashboard">
+      <h1>Dashboard</h1>
+      <div class="metrics" id="metrics"></div>
+      <div class="card"><h3>⚠️ Stock bajo</h3><div id="stockBajo"></div></div>
+    </div>
+
+    <div id="page-blancos" class="hidden">
+      <h1>Inventario de Camisetas en Blanco</h1>
+      <button class="btn btn-green" onclick="generarBlancos()">➕ Generar todas las combinaciones</button>
+      <div class="card" style="margin-top:20px"><div id="tablaBlancos"></div></div>
+      <div class="card">
+        <h3>Editar stock / costo</h3>
+        <select id="selectBlanco"></select>
+        <div class="grid2">
+          <div><label>Stock</label><input type="number" id="editStock" min="0"></div>
+          <div><label>Costo unitario</label><input type="number" id="editCosto" min="0"></div>
+        </div>
+        <button class="btn" onclick="guardarBlanco()">Actualizar</button>
+      </div>
+    </div>
+
+    <div id="page-ventas" class="hidden">
+      <h1>Nueva Venta / Factura</h1>
+      <div class="card">
+        <div class="grid2">
+          <div><label>Cliente</label><input id="vCliente" value="Consumidor Final"></div>
+          <div><label>Documento</label><input id="vDoc"></div>
+        </div>
+        <label>Descripción del diseño *</label>
+        <input id="vDiseno" placeholder="Ej: Estampado logo BRINDIESTYLE frente">
+        <label>Camiseta en blanco a usar *</label>
+        <select id="vBlanco"></select>
+        <div class="grid2">
+          <div><label>Cantidad</label><input type="number" id="vCant" value="1" min="1"></div>
+          <div><label>Precio de venta unitario</label><input type="number" id="vPrecio" min="0" step="1000"></div>
+        </div>
+        <label>Notas</label>
+        <input id="vNotas">
+        <button class="btn btn-green" onclick="crearVenta()">Generar Factura y descontar stock</button>
+        <div id="ventaMsg"></div>
+      </div>
+      <div class="card"><h3>Últimas facturas</h3><div id="listaFacturas"></div></div>
+    </div>
+
+    <div id="page-flujo" class="hidden">
+      <h1>Flujo de Caja</h1>
+      <div class="card">
+        <div class="grid2">
+          <div><label>Tipo</label><select id="fTipo"><option value="entrada">Entrada</option><option value="salida">Salida</option></select></div>
+          <div><label>Categoría</label><select id="fCat"></select></div>
+        </div>
+        <div class="grid2">
+          <div><label>Monto</label><input type="number" id="fMonto" min="0"></div>
+          <div><label>Fecha</label><input type="date" id="fFecha"></div>
+        </div>
+        <label>Descripción</label>
+        <input id="fDesc">
+        <button class="btn" onclick="guardarFlujo()">Guardar</button>
+      </div>
+      <div class="card"><div id="listaFlujo"></div></div>
+    </div>
+
+    <div id="page-rentabilidad" class="hidden">
+      <h1>Rentabilidad</h1>
+      <div class="metrics" id="metricsRent"></div>
+    </div>
+
+    <div id="page-shopify" class="hidden">
+      <h1>🔄 Shopify Sync</h1>
+      <div class="card">
+        <p style="margin-bottom:15px;color:#aaa">Trae los diseños/productos de Shopify (solo lectura). No modifica el inventario de Shopify.</p>
+        <button class="btn btn-green" onclick="sincronizarShopify()">Sincronizar productos de Shopify</button>
+        <div id="shopifyMsg" style="margin-top:15px"></div>
+        <div id="shopifyResult" style="margin-top:20px"></div>
+      </div>
+    </div>
+
+    <div id="page-config" class="hidden">
+      <h1>Configuración</h1>
+      <div class="card">
+        <label>Nombre de la empresa</label>
+        <input id="cNombre" value="BRINDIESTYLE">
+        <label>NIT</label>
+        <input id="cNit">
+        <label>Dirección</label>
+        <input id="cDir">
+        <label>Teléfono</label>
+        <input id="cTel">
+        <button class="btn" onclick="guardarConfig()">Guardar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  const firebaseConfig = {
+    apiKey: "AIzaSyBC6Ut_DGj20QaCcjlE8jZBnZSrxSVeb1c",
+    authDomain: "sismte-pos-brindiestyle.firebaseapp.com",
+    projectId: "sismte-pos-brindiestyle",
+    storageBucket: "sismte-pos-brindiestyle.firebasestorage.app",
+    messagingSenderId: "928999412425",
+    appId: "1:928999412425:web:64d03b3b38e12012fc7318",
+    measurementId: "G-1QPXJZ6LWR"
+  };
+  firebase.initializeApp(firebaseConfig);
+  const auth = firebase.auth();
+  const db = firebase.firestore();
+
+  const BLANK_TYPES = {
+    "Ringer Tee": { colors: ["Negro", "Vino"], sizes: ["S", "M", "L"] },
+    "Camisilla": { colors: ["Blanca", "Negra"], sizes: ["S", "M", "L"] },
+    "Básica": { colors: ["Cuello Vino", "Azul Petróleo"], sizes: ["S", "M", "L"] }
+  };
+  const CAT_ENTRADA = ["Venta", "Otro ingreso", "Aporte de capital"];
+  const CAT_SALIDA = ["Compra de mercancía", "Gasto operativo", "Pago a proveedor", "Retiro del dueño", "Otros"];
+
+  let currentUser = null;
+  let blancos = [];
+  let config = { nombre: "BRINDIESTYLE", nit: "", direccion: "", telefono: "" };
+
+  function loginWithGoogle() {
+    const provider = new firebase.auth.GoogleAuthProvider();
+    auth.signInWithPopup(provider).catch(e => {
+      document.getElementById("loginError").textContent = e.message;
+      document.getElementById("loginError").classList.remove("hidden");
+    });
+  }
+  function logout() { auth.signOut(); }
+
+  auth.onAuthStateChanged(user => {
+    if (user) {
+      currentUser = user;
+      document.getElementById("loginScreen").style.display = "none";
+      document.getElementById("app").style.display = "block";
+      document.getElementById("userEmail").textContent = user.email;
+      cargarTodo();
+    } else {
+      document.getElementById("loginScreen").style.display = "flex";
+      document.getElementById("app").style.display = "none";
+    }
+  });
+
+  function showPage(id) {
+    document.querySelectorAll(".main > div").forEach(p => p.classList.add("hidden"));
+    document.getElementById("page-" + id).classList.remove("hidden");
+    document.querySelectorAll(".sidebar button").forEach(b => b.classList.remove("active"));
+    if (event && event.target) event.target.classList.add("active");
+    if (id === "dashboard") renderDashboard();
+    if (id === "blancos") renderBlancos();
+    if (id === "ventas") renderVentas();
+    if (id === "flujo") renderFlujo();
+    if (id === "rentabilidad") renderRentabilidad();
+  }
+
+  async function cargarTodo() {
+    const snap = await db.collection("products").where("is_blank", "==", true).get();
+    blancos = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    const conf = await db.collection("settings").doc("empresa").get();
+    if (conf.exists) config = conf.data();
+    document.getElementById("cNombre").value = config.nombre || "BRINDIESTYLE";
+    document.getElementById("cNit").value = config.nit || "";
+    document.getElementById("cDir").value = config.direccion || "";
+    document.getElementById("cTel").value = config.telefono || "";
+    document.getElementById("fFecha").value = new Date().toISOString().slice(0,10);
+    actualizarSelectsFlujo();
+    renderDashboard();
+  }
+
+  async function generarBlancos() {
+    let created = 0;
+    for (const [tipo, data] of Object.entries(BLANK_TYPES)) {
+      for (const color of data.colors) {
+        for (const size of data.sizes) {
+          const name = `${tipo} - ${color} - ${size}`;
+          const exists = blancos.find(b => b.name === name);
+          if (!exists) {
+            const prefix = tipo.includes("Ringer") ? "RING" : (tipo.includes("Camisilla") ? "CAM" : "BAS");
+            const sku = `BS-${prefix}-${Date.now().toString().slice(-4)}${created}`;
+            await db.collection("products").add({
+              name, category: "Camisetas en Blanco", product_type: tipo, color, size,
+              quantity: 0, unit_cost: 0, min_stock: 0, sku, is_blank: true
+            });
+            created++;
+          }
+        }
+      }
+    }
+    alert(`Se crearon ${created} combinaciones nuevas`);
+    await cargarTodo();
+    renderBlancos();
+  }
+
+  function renderBlancos() {
+    let html = `<table><tr><th>SKU</th><th>Nombre</th><th>Stock</th><th>Costo</th><th>Valor</th></tr>`;
+    blancos.sort((a,b) => a.name.localeCompare(b.name)).forEach(b => {
+      html += `<tr><td>${b.sku||''}</td><td>${b.name}</td><td>${b.quantity||0}</td><td>$${(b.unit_cost||0).toLocaleString()}</td><td>$${((b.quantity||0)*(b.unit_cost||0)).toLocaleString()}</td></tr>`;
+    });
+    html += `</table>`;
+    document.getElementById("tablaBlancos").innerHTML = html || "<p>No hay blancos. Genera las combinaciones.</p>";
+    const sel = document.getElementById("selectBlanco");
+    sel.innerHTML = blancos.map(b => `<option value="${b.id}">${b.name} (Stock: ${b.quantity||0})</option>`).join("");
+    if (blancos.length) cargarEditBlanco();
+    sel.onchange = cargarEditBlanco;
+  }
+
+  function cargarEditBlanco() {
+    const id = document.getElementById("selectBlanco").value;
+    const b = blancos.find(x => x.id === id);
+    if (b) {
+      document.getElementById("editStock").value = b.quantity || 0;
+      document.getElementById("editCosto").value = b.unit_cost || 0;
+    }
+  }
+
+  async function guardarBlanco() {
+    const id = document.getElementById("selectBlanco").value;
+    const qty = parseFloat(document.getElementById("editStock").value) || 0;
+    const cost = parseFloat(document.getElementById("editCosto").value) || 0;
+    await db.collection("products").doc(id).update({ quantity: qty, unit_cost: cost });
+    alert("Actualizado");
+    await cargarTodo();
+    renderBlancos();
+  }
+
+  function renderVentas() {
+    const conStock = blancos.filter(b => (b.quantity || 0) > 0);
+    document.getElementById("vBlanco").innerHTML = conStock.map(b => 
+      `<option value="${b.id}">${b.name} (disp: ${b.quantity})</option>`).join("") || "<option>No hay stock</option>";
+    db.collection("invoices").orderBy("created_at", "desc").limit(15).get().then(snap => {
+      let html = `<table><tr><th>Factura</th><th>Fecha</th><th>Cliente</th><th>Diseño</th><th>Total</th></tr>`;
+      snap.forEach(d => {
+        const i = d.data();
+        html += `<tr><td>${i.invoice_number}</td><td>${i.invoice_date}</td><td>${i.customer_name}</td><td>${i.design_description}</td><td>$${(i.total||0).toLocaleString()}</td></tr>`;
+      });
+      document.getElementById("listaFacturas").innerHTML = html + "</table>";
+    });
+  }
+
+  async function crearVenta() {
+    const diseno = document.getElementById("vDiseno").value.trim();
+    const blankId = document.getElementById("vBlanco").value;
+    const cant = parseFloat(document.getElementById("vCant").value) || 1;
+    const precio = parseFloat(document.getElementById("vPrecio").value) || 0;
+    if (!diseno) return alert("Escribe la descripción del diseño");
+    const blank = blancos.find(b => b.id === blankId);
+    if (!blank || blank.quantity < cant) return alert("Stock insuficiente");
+
+    const total = cant * precio;
+    const invNum = "FV-" + Date.now().toString().slice(-6);
+    const hoy = new Date().toISOString().slice(0,10);
+
+    await db.collection("invoices").add({
+      invoice_number: invNum, invoice_date: hoy,
+      customer_name: document.getElementById("vCliente").value,
+      customer_doc: document.getElementById("vDoc").value,
+      design_description: diseno, blank_product_id: blankId,
+      blank_name: blank.name, quantity: cant, unit_price: precio,
+      unit_cost: blank.unit_cost || 0, total, notes: document.getElementById("vNotas").value,
+      created_at: firebase.firestore.FieldValue.serverTimestamp()
+    });
+
+    await db.collection("products").doc(blankId).update({
+      quantity: firebase.firestore.FieldValue.increment(-cant)
+    });
+
+    await db.collection("cash_flow").add({
+      flow_date: hoy, flow_type: "entrada", category: "Venta",
+      amount: total, description: `Factura ${invNum}`,
+      created_at: firebase.firestore.FieldValue.serverTimestamp()
+    });
+
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF();
+    doc.setFontSize(16);
+    doc.text(config.nombre || "BRINDIESTYLE", 105, 20, { align: "center" });
+    doc.setFontSize(12);
+    doc.text(`FACTURA ${invNum}`, 105, 30, { align: "center" });
+    doc.text(`Fecha: ${hoy}`, 20, 45);
+    doc.text(`Cliente: ${document.getElementById("vCliente").value}`, 20, 55);
+    doc.text(`Diseño: ${diseno}`, 20, 65);
+    doc.text(`Camiseta: ${blank.name}`, 20, 75);
+    doc.text(`Cantidad: ${cant}   Precio: $${precio.toLocaleString()}   TOTAL: $${total.toLocaleString()}`, 20, 90);
+    doc.save(`${invNum}.pdf`);
+
+    document.getElementById("ventaMsg").innerHTML = `<div class="success">Factura ${invNum} creada y stock descontado</div>`;
+    await cargarTodo();
+    renderVentas();
+  }
+
+  function actualizarSelectsFlujo() {
+    const tipo = document.getElementById("fTipo").value;
+    const cats = tipo === "entrada" ? CAT_ENTRADA : CAT_SALIDA;
+    document.getElementById("fCat").innerHTML = cats.map(c => `<option>${c}</option>`).join("");
+  }
+  document.getElementById("fTipo")?.addEventListener("change", actualizarSelectsFlujo);
+
+  async function guardarFlujo() {
+    await db.collection("cash_flow").add({
+      flow_date: document.getElementById("fFecha").value,
+      flow_type: document.getElementById("fTipo").value,
+      category: document.getElementById("fCat").value,
+      amount: parseFloat(document.getElementById("fMonto").value) || 0,
+      description: document.getElementById("fDesc").value,
+      created_at: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    alert("Guardado");
+    renderFlujo();
+  }
+
+  function renderFlujo() {
+    db.collection("cash_flow").orderBy("flow_date", "desc").limit(30).get().then(snap => {
+      let html = `<table><tr><th>Fecha</th><th>Tipo</th><th>Categoría</th><th>Monto</th><th>Descripción</th></tr>`;
+      snap.forEach(d => {
+        const f = d.data();
+        html += `<tr><td>${f.flow_date}</td><td>${f.flow_type}</td><td>${f.category}</td><td>$${(f.amount||0).toLocaleString()}</td><td>${f.description||''}</td></tr>`;
+      });
+      document.getElementById("listaFlujo").innerHTML = html + "</table>";
+    });
+  }
+
+  async function renderDashboard() {
+    const totalValor = blancos.reduce((s,b) => s + (b.quantity||0)*(b.unit_cost||0), 0);
+    const mes = new Date().toISOString().slice(0,7);
+    const invs = await db.collection("invoices").get();
+    let ventas = 0, cogs = 0;
+    invs.forEach(d => {
+      const i = d.data();
+      if ((i.invoice_date||"").startsWith(mes)) {
+        ventas += i.total || 0;
+        cogs += (i.quantity||0)*(i.unit_cost||0);
+      }
+    });
+    document.getElementById("metrics").innerHTML = `
+      <div class="metric"><div class="label">Valor Blancos</div><div class="value">$${totalValor.toLocaleString()}</div></div>
+      <div class="metric"><div class="label">Ventas del mes</div><div class="value">$${ventas.toLocaleString()}</div></div>
+      <div class="metric"><div class="label">Utilidad Bruta</div><div class="value">$${(ventas-cogs).toLocaleString()}</div></div>
+    `;
+    const bajos = blancos.filter(b => (b.quantity||0) <= (b.min_stock||0) && (b.min_stock||0) > 0);
+    document.getElementById("stockBajo").innerHTML = bajos.length ? bajos.map(b => `<div>${b.name}: ${b.quantity}</div>`).join("") : "Todo en orden";
+  }
+
+  async function renderRentabilidad() {
+    const invs = await db.collection("invoices").get();
+    let ventas = 0, cogs = 0;
+    invs.forEach(d => {
+      const i = d.data();
+      ventas += i.total || 0;
+      cogs += (i.quantity||0)*(i.unit_cost||0);
+    });
+    document.getElementById("metricsRent").innerHTML = `
+      <div class="metric"><div class="label">Ventas totales</div><div class="value">$${ventas.toLocaleString()}</div></div>
+      <div class="metric"><div class="label">Costo camisetas</div><div class="value">$${cogs.toLocaleString()}</div></div>
+      <div class="metric"><div class="label">Utilidad Bruta</div><div class="value">$${(ventas-cogs).toLocaleString()}</div></div>
+    `;
+  }
+
+  async function guardarConfig() {
+    config = {
+      nombre: document.getElementById("cNombre").value,
+      nit: document.getElementById("cNit").value,
+      direccion: document.getElementById("cDir").value,
+      telefono: document.getElementById("cTel").value
+    };
+    await db.collection("settings").doc("empresa").set(config);
+    alert("Configuración guardada");
+  }
+
+  // ========== SHOPIFY SYNC ==========
+  async function sincronizarShopify() {
+    const msg = document.getElementById("shopifyMsg");
+    const result = document.getElementById("shopifyResult");
+    msg.innerHTML = `<div class="success">Sincronizando con Shopify...</div>`;
+    result.innerHTML = "";
+
+    try {
+      const res = await fetch("/.netlify/functions/sync-shopify");
+      const data = await res.json();
+
+      if (data.error) {
+        msg.innerHTML = `<div class="error">Error: ${data.error}</div>`;
+        return;
+      }
+
+      const products = data.products || [];
+      let added = 0;
+
+      for (const p of products) {
+        for (const v of (p.variants || [])) {
+          const vid = String(v.id);
+          const fullName = (v.title === "Default Title" || !v.title) ? p.title : `${p.title} - ${v.title}`;
+          const exists = await db.collection("products").where("shopify_variant_id", "==", vid).limit(1).get();
+          
+          if (exists.empty) {
+            await db.collection("products").add({
+              name: fullName,
+              category: "Diseños Shopify",
+              quantity: 0,
+              unit_cost: 0,
+              sku: v.sku || `SH-${vid.slice(-6)}`,
+              shopify_variant_id: vid,
+              shopify_product_id: String(p.id),
+              shopify_price: parseFloat(v.price) || 0,
+              is_blank: false
+            });
+            added++;
+          }
+        }
+      }
+
+      msg.innerHTML = `<div class="success">Sincronizado. ${added} productos nuevos importados de Shopify.</div>`;
+      result.innerHTML = `<p>Total productos recibidos de Shopify: ${products.length}</p>`;
+    } catch (err) {
+      msg.innerHTML = `<div class="error">Error de conexión: ${err.message}</div>`;
+    }
+  }
+</script>
+</body>
+</html>
